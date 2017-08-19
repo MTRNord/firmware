@@ -13,9 +13,9 @@
 
 builddir=./build
 
-OPENWRTREV="f2b885d82e6e7859f7cc32b557bbd80735e32b47" # LEDE 17.01
+OPENWRTREV="2da512ecf4631cd7812283f0931cf6bbf842a313" # LEDE 17.01.2
 OPENWRTURL="https://git.lede-project.org/source.git"
-PACKAGEREV="06198d9c8c1ba061a0a5d566545a5c0bbce2b0a4" # lede-17.01
+PACKAGEREV="f2539c5847cea6a36e3363babacd7d8f37252ec3" # lede-17.01 from 2017-06-29
 PACKAGEURL="https://github.com/openwrt/packages.git"
 
 ## Feed definition [0]: name aka directory, [1]: url, [2]: revision, [3..n]: patches
@@ -122,7 +122,7 @@ get_source() {
 patch_target() {
     if [ "$(find "$PWD"/build_patches/openwrt/*.patch 2> /dev/null | wc -l)" -ge 1 ]; then
         for patch in "$PWD"/build_patches/openwrt/*.patch; do
-            patch --no-backup-if-mismatch -p0 -d "$target" -i "$patch"
+            patch --no-backup-if-mismatch -p1 -d "$target" -i "$patch"
         done
     fi
 }
@@ -134,6 +134,8 @@ prepare() {
 
     /bin/rm -rf "$target"
     cp -a src/openwrt "$target"
+
+    patch_target
 
     ## generate own feeds.conf
     #this local variable should be globally configure variable used in get_source and here
@@ -165,8 +167,6 @@ prepare() {
             "$target"/scripts/feeds install -p "$NAME" "${PACKAGESVAR[@]}"
         fi
     done
-
-    patch_target
 
     #saves ~200MB for each build
     test -d ./src/dl || mkdir ./src/dl
