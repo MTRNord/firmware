@@ -2,12 +2,13 @@
 
 <%
 echo -en "Content-Type: text/html\r\n\r\n"
-HOSTNAME=$(uci -q get 'system.@system[0].hostname')
+HOSTNAME="$(uci -q get "fff.system.hostname")"
+hood="$(uci -q get "system.@system[0].hood")"
 
 MAC="$(uci -q get network.mesh.macaddr)"
-lat="$(uci -q get system.@system[0].latitude)"
-lon="$(uci -q get system.@system[0].longitude)"
-contact="$(uci -q get system.@system[0].contact)"
+lat="$(uci -q get "fff.system.latitude")"
+lon="$(uci -q get "fff.system.longitude")"
+contact="$(uci -q get "fff.system.contact")"
 
 . /etc/firmware_release
 
@@ -47,11 +48,11 @@ contact="$(uci -q get system.@system[0].contact)"
 								<tr><th>MAC-Adresse:</th><td style="text-transform: uppercase;"><a href="https://monitoring.freifunk-franken.de/api/get_router_by_mac/<%= $MAC %>"><%= $MAC %></a></td></tr>
 								<tr><th>Modell:</th><td><% cat /tmp/sysinfo/model 2>/dev/null %></td></tr>
 								<tr><th>Firmware:</th><td><%= ${FIRMWARE_VERSION} %></td></tr>
-								<tr><th>Beschreibung:</th><td><% uci -q get 'system.@system[0].description' %></td></tr>
+								<tr><th>Beschreibung:</th><td><% uci -q get 'fff.system.description' %></td></tr>
 								<tr><th>Position:</th><td><% if [ -n "$lat" -a -n "$lon" ]; then
 									echo "<a href=\"https://monitoring.freifunk-franken.de/map?mapcenter=$lat,$lon,16\">${lat:0:8}N, ${lon:0:8}E</a>"
 								fi %></td></tr>
-								<tr><th>Standort:</th><td><% uci -q get 'system.@system[0].position_comment' %></td></tr>
+								<tr><th>Standort:</th><td><% uci -q get 'fff.system.position_comment' %></td></tr>
 								<tr><th>E-Mail Adresse:</th><td><a href="mailto:<%= $contact %>"><%= $contact %></a></td></tr>
 							</table>
 						</fieldset>
@@ -59,6 +60,7 @@ contact="$(uci -q get system.@system[0].contact)"
 						<fieldset style="min-height: 15em;">
 							<legend>Status</legend>
 							<table>
+								<tr><th>Hood:</th><td><% echo "$hood" %></td></tr>
 								<tr><th>Nachbarknoten:</th><td><% echo -n $(cat /sys/kernel/debug/batman_adv/bat0/originators | grep '^[0-9a-f]' | cut -b 37-53 | sort | uniq | wc -l 2> /dev/null) %></td></tr>
 								<tr><th>Bekannte Knoten:</th><td><% echo -n $((`cat /sys/kernel/debug/batman_adv/bat0/transtable_global | grep '^ [^ ]' | cut -b 39-55 | sort | uniq | wc -l 2> /dev/null`+1)) %></td></tr>
 								<tr><th>Lokale Clients:</th><td><% echo -n $(cat /sys/kernel/debug/batman_adv/bat0/transtable_local 2> /dev/null | grep -c 'W') %></td></tr>

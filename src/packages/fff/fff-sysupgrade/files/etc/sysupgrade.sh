@@ -1,9 +1,16 @@
 #!/bin/sh
 cd /tmp/
 
+. /lib/functions/fff/keyxchange
 . /etc/firmware_release
 
-. /etc/community.cfg
+UPGRADE_PATH="$(getUpgradePath)"
+
+if [ -z "$UPGRADE_PATH" ]; then
+  echo "Upgrade path not set! Aborting."
+  echo ""
+  exit 1
+fi
 
 BOARD=$(uci get board.model.name)
 
@@ -23,16 +30,6 @@ case $BOARD in
         BOARD="cpe210-220" ;;
     cpe510 )
         BOARD="cpe510-520" ;;
-    wr841nd-v7 )
-        BOARD="wr841-v7" ;;
-    wr841n-v8 )
-        BOARD="wr841-v8" ;;
-    wr841n-v9 )
-        BOARD="wr841-v9" ;;
-    wr841n-v10 )
-        BOARD="wr841-v10" ;;
-    wr841n-v11 )
-        BOARD="wr841-v11" ;;
 esac
 
 wget "${UPGRADE_PATH}/release.nfo"

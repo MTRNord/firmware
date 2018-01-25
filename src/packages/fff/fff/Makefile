@@ -18,17 +18,20 @@ define Package/fff-base
              +ip6tables \
              +odhcp6c \
              +micrond \
+             +fff-config \
              +fff-nodewatcher \
              +fff-web \
              +fff-uradvd \
-             +fff-batman-adv-legacy \
+             +fff-batman-adv \
              +fff-firewall \
              +fff-support \
              +fff-network \
              +fff-sysupgrade \
              +fff-wireless \
              +fff-timeserver \
-             +fff-vpn-select
+             +fff-vpn-select \
+             +simple-tc \
+             +fff-hoods
 endef
 
 define Package/fff-base/description

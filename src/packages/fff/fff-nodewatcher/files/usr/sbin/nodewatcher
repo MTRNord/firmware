@@ -2,7 +2,7 @@
 # Netmon Nodewatcher (C) 2010-2012 Freifunk Oldenburg
 # License; GPL v3
 
-SCRIPT_VERSION="41"
+SCRIPT_VERSION="46"
 
 test -f /tmp/started || exit
 
@@ -30,7 +30,7 @@ else
     }
 fi
 
-#this method checks id the logfile has bekome too big and deletes the first X lines
+#This method checks if the log file has become too big and deletes the first X lines
 delete_log() {
     if [ -f "$SCRIPT_LOGFILE" ]; then
         if [ "$(find "$SCRIPT_LOGFILE" -printf "%s")" -gt "6000" ]; then
@@ -50,26 +50,29 @@ inArray() {
     return 1
 }
 
-#this method generates the crawl data xml file that is beeing fetched by netmon
+#This method generates the crawl data XML file that is being fetched by netmon
 #and provided by a small local httpd
 crawl() {
     #Get system data from other locations
     err "$(date): Collecting basic system status data"
     hostname="$(cat /proc/sys/kernel/hostname)"
-    description="$(uci get system.@system[0].description)"
+    mac=$(awk '{ mac=toupper($1); gsub(":", "", mac); print mac }' /sys/class/net/br-mesh/address 2>/dev/null)
+    [ "$hostname" = "LEDE" ] && hostname="$mac"
+    [ "$hostname" = "FFF" ] && hostname="$mac"
+    description="$(uci -q get fff.system.description)"
     if [ -n "$description" ]; then
         description="<description><![CDATA[$description]]></description>"
     fi
-    latitude="$(uci get system.@system[0].latitude)"
-    longitude="$(uci get system.@system[0].longitude)"
+    latitude="$(uci -q get fff.system.latitude)"
+    longitude="$(uci -q get fff.system.longitude)"
     if [ -n "$longitude" -a -n "$latitude" ]; then
         geo="<geo><lat>$latitude</lat><lng>$longitude</lng></geo>";
     fi
-    position_comment="$(uci get system.@system[0].position_comment)"
+    position_comment="$(uci -q get fff.system.position_comment)"
     if [ -n "$position_comment" ]; then
         position_comment="<position_comment><![CDATA[$position_comment]]></position_comment>"
     fi
-    contact="$(uci get system.@system[0].contact)"
+    contact="$(uci -q get fff.system.contact)"
     if [ -n "$contact" ]; then
         contact="<contact>$contact</contact>"
     fi
@@ -135,10 +138,10 @@ crawl() {
     SYSTEM_DATA=$SYSTEM_DATA"${geo}"
     SYSTEM_DATA=$SYSTEM_DATA"${position_comment}"
     SYSTEM_DATA=$SYSTEM_DATA"${contact}"
-    if [ "$(uci -q get "system.@system[0].hood")" ] 
-    then                                                                                                                         
-        SYSTEM_DATA=$SYSTEM_DATA"<hood>$(uci -q get "system.@system[0].hood")</hood>"                                            
-    fi  
+    if [ "$(uci -q get "system.@system[0].hood")" ]
+    then
+        SYSTEM_DATA=$SYSTEM_DATA"<hood>$(uci -q get "system.@system[0].hood")</hood>"
+    fi
     SYSTEM_DATA=$SYSTEM_DATA"<distname>$distname</distname>"
     SYSTEM_DATA=$SYSTEM_DATA"<distversion>$distversion</distversion>"
     SYSTEM_DATA=$SYSTEM_DATA"$cpu"
@@ -196,7 +199,16 @@ crawl() {
             /ESSID/ { split($0, e, "\""); printf "<wlan_essid>"e[2]"</wlan_essid>" }
             /Freq/{ split($3, f, " "); printf "<wlan_frequency>"f[1]f[2]"</wlan_frequency>" }
             /Tx-Power/{ split($0, p, "="); sub(/[[:space:]]*$/, "", p[2]); printf "<wlan_tx_power>"p[2]"</wlan_tx_power>" }
-        ')"</$iface>"
+        ')
+
+        interface_data=$interface_data$(iw dev "${iface}" info 2>/dev/null | awk '
+            /ssid/{ split($0, s, " "); printf "<wlan_ssid>"s[2]"</wlan_ssid>" }
+            /type/ { split($0, t, " "); printf "<wlan_type>"t[2]"</wlan_type>" }
+            /channel/{ split($0, c, " "); printf "<wlan_channel>"c[2]"</wlan_channel>" }
+            /width/{ split($0, w, ": "); sub(/ .*/, "", w[2]); printf "<wlan_width>"w[2]"</wlan_width>" }
+        ')
+
+        interface_data=$interface_data"</$iface>"
     done
 
     err "$(date): Collecting information from batman advanced and its interfaces"
@@ -231,15 +243,15 @@ crawl() {
 
         batman_adv_gateway_list=$(awk \
             'BEGIN { FS=" "; i=0 }
+            /B.A.T.M.A.N./ { next }
             /Gateway/ { next }
             /No gateways/ { next }
-            {   sub("=>", "true", $0)
-                sub("  ", "false", $0)
-                sub("\\(", "", $0)
+            {   sub("\\(", "", $0)
                 sub("\\)", "", $0)
-                sub("\\[", "", $0)
+                sub("\\[ *", "", $0)
                 sub("\\]:", "", $0)
-                sub("  ", " ", $0)
+                sub("=> ", "true ", $0)
+                sub("   ", "false ", $0)
                 printf "<gateway_"i"><selected>"$1"</selected><gateway>"$2"</gateway><link_quality>"$3"</link_quality><nexthop>"$4"</nexthop><outgoing_interface>"$5"</outgoing_interface><gw_class>"$6" "$7" "$8"</gw_class></gateway_"i">"
                 i++
             }' /sys/kernel/debug/batman_adv/bat0/gateways)
@@ -247,10 +259,12 @@ crawl() {
     err "$(date): Collecting information about conected clients"
     #CLIENTS
     client_count=0
+    dataclient=""
     CLIENT_INTERFACES=$(bridge link | awk '$2 !~/^bat/{ printf $2" " }')
     for clientif in ${CLIENT_INTERFACES}; do
         local cc=$(bridge fdb show br "$MESH_INTERFACE" brport "$clientif" | grep -v self | grep -v permanent -c)
         client_count=$((client_count + cc))
+        dataclient="$dataclient<$clientif>$cc</$clientif>"
     done
 
     err "$(date): Putting all information into a XML-File and save it at $SCRIPT_DATA_FILE"
@@ -263,6 +277,7 @@ crawl() {
     DATA=$DATA"<batman_adv_gateway_mode>$batman_adv_gateway_mode</batman_adv_gateway_mode>"
     DATA=$DATA"<batman_adv_gateway_list>$batman_adv_gateway_list</batman_adv_gateway_list>"
     DATA=$DATA"<client_count>$client_count</client_count>"
+    DATA=$DATA"<clients>$dataclient</clients>"
     DATA=$DATA"</data>"
 
     #write data to xml file that provides the data on httpd

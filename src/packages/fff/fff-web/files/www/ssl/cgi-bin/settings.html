@@ -9,29 +9,58 @@ if [ "$REQUEST_METHOD" == "POST" ] ; then
 	regex=$regex'(\.([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9]))*$'
 	if [ "${#POST_hostname}" -ge "255" ] ; then
 		MSG='<span class="red">Knotenname ist l&auml;nger als 255 Zeichen!</span>'
-        elif ! echo -n "$POST_hostname" | egrep -q "$regex"; then   
+		elif ! echo -n "$POST_hostname" | egrep -q "$regex"; then
 		MSG='<span class="red">Knotenname enth&auml;lt ung&uuml;ltige Zeichen!</span>'
 	else
 		# Allgemeine Einstellungen
+		uci -q set "fff.system.hostname=${POST_hostname}"
+		echo "$(uci -q get "fff.system.hostname")" > /proc/sys/kernel/hostname
 		uci -q set "system.@system[0].hostname=${POST_hostname}"
-		echo "$(uci -q get "system.@system[0].hostname")" > /proc/sys/kernel/hostname
-		uci -q set "system.@system[0].description=${POST_description}"
-		uci -q set "system.@system[0].latitude=${POST_latitude}"
-		uci -q set "system.@system[0].longitude=${POST_longitude}"
-		uci -q set "system.@system[0].position_comment=${POST_position_comment}"
-		uci -q set "system.@system[0].contact=${POST_contact}"
+		uci -q set "fff.system.description=${POST_description}"
+		uci -q set "fff.system.latitude=${POST_latitude}"
+		uci -q set "fff.system.longitude=${POST_longitude}"
+		uci -q set "fff.system.position_comment=${POST_position_comment}"
+		uci -q set "fff.system.contact=${POST_contact}"
 
 		# Bitratenbegrenzung
+		uci -q get "fff.trafficcontrol" > /dev/null || uci -q set fff.trafficcontrol=fff
 		if [ "$POST_traffic_limit" == "on" ] ; then
-			uci -q set "simple-tc.example.ifname=$(uci -q get network.wan.ifname)"
+			uci -q set "fff.trafficcontrol.enabled=1"
 			uci -q set "simple-tc.example.enabled=1"
 		else
+			uci -q set "fff.trafficcontrol.enabled=0"
 			uci -q set "simple-tc.example.enabled=0"
 		fi
+		uci -q set "fff.trafficcontrol.limit_in=${POST_limit_ingress}"
+		uci -q set "fff.trafficcontrol.limit_out=${POST_limit_egress}"
+
+		uci -q set "simple-tc.example.ifname=wan"
 		uci -q set "simple-tc.example.limit_ingress=${POST_limit_ingress}"
 		uci -q set "simple-tc.example.limit_egress=${POST_limit_egress}"
 
-		uci commit
+		# Restliche Einstellungen
+		uci -q set "fff.notifyupdate=webui"
+		if [ "$POST_upgrade_notification" == "on" ] ; then
+			uci -q set "fff.notifyupdate.value=1"
+		else
+			uci -q set "fff.notifyupdate.value=0"
+			rm -f /tmp/fwcheck
+			rm -f /tmp/isupdate
+		fi
+
+		if uci -q get system.poe_passthrough > /dev/null ; then
+			uci -q set "fff.poe_passthrough=fff"
+			if [ "$POST_poe_passthrough" == "on" ] ; then
+				uci -q set "fff.poe_passthrough.active=1"
+				uci -q set "system.poe_passthrough.value=1"
+			else
+				uci -q set "fff.poe_passthrough.active=0"
+				uci -q set "system.poe_passthrough.value=0"
+			fi
+		fi
+
+		uci -q commit
+
 		MSG='<span class="green">Daten gespeichert! - Bitte Router neustarten.</span>'
 	fi
 fi
@@ -40,45 +69,73 @@ fi
 <%in /www/ssl/cgi-bin/helpers %>
 <%
 # read
-if [ "$(uci -q get 'simple-tc.example.enabled')" == "1" ] ; then
-	traffic_checked="checked"
+chkd='checked="checked" '
+if [ "$(uci -q get 'fff.trafficcontrol.enabled')" == "1" ] ; then # not set=0
+	traffic_checked="$chkd"
 else
 	traffic_checked=""
 fi
+if [ "$(uci -q get 'fff.notifyupdate.value')" == "0" ] ; then # not set=1
+	upgrade_checked=""
+else
+	upgrade_checked="$chkd"
+fi
 %>
 <% show_msg %>
-<form method="POST">
+<form method="post">
 <table style="width: 100%;">
 <tr><td>
 <fieldset style="min-height: 13em;">
 	<legend>Allgemeine Einstellungen</legend>
 	<table>
 		<tr><th>Knotenname:</th><td><input type="text" name="hostname" value="<%= ${HOSTNAME} %>" /></td></tr>
-		<tr><th>Knotenbeschreibung:</th><td><input type="text" name="description" value="<%= $(uci -q get 'system.@system[0].description') %>" /></td></tr>
+		<tr><th>Knotenbeschreibung:</th><td><input type="text" name="description" value="<%= $(uci -q get 'fff.system.description') %>" /></td></tr>
 		<tr><th>GPS Breitengrad:</th>
-			<td><input type="text" name="latitude" value="<%= $(uci -q get 'system.@system[0].latitude') %>" /></td>
+			<td><input type="text" name="latitude" value="<%= $(uci -q get 'fff.system.latitude') %>" /></td>
 			<td rowspan="2" style="vertical-align: middle;">
 				<button type="button" style="height: 100%; width: 126px; margin-left: 5px;" onclick="window.open('/map.html', '_blank', 'location=0,status=0,scrollbars=1,width=400,height=300');">Position auf Karte anzeigen / setzen</button>
 			</td>
 		</tr>
-		<tr><th>GPS L&auml;ngengrad:</th><td><input type="text" name="longitude" value="<%= $(uci -q get 'system.@system[0].longitude') %>" /></td></tr>
-		<tr><th>Standortbeschreibung:</th><td><input type="text" name="position_comment" value="<%= $(uci -q get 'system.@system[0].position_comment') %>" /></td></tr>
-		<tr><th>E-Mail Adresse:</th><td><input type="email" name="contact" value="<%= $(uci -q get 'system.@system[0].contact') %>" /></td></tr>
+		<tr><th>GPS L&auml;ngengrad:</th><td><input type="text" name="longitude" value="<%= $(uci -q get 'fff.system.longitude') %>" /></td></tr>
+		<tr><th>Standortbeschreibung:</th><td><input type="text" name="position_comment" value="<%= $(uci -q get 'fff.system.position_comment') %>" /></td></tr>
+		<tr><th>E-Mail Adresse:</th><td><input type="email" name="contact" value="<%= $(uci -q get 'fff.system.contact') %>" /></td></tr>
 	</table>
 </fieldset>
+<p><input type="submit" style="margin-top: 5px; margin-left: 3px;" /></p>
 </td><td>
-<fieldset style="min-height: 13em;" class="smallinput">
+<fieldset style="min-height: 7em;" class="smallinput">
 	<legend>Bitratenbegrenzung</legend>
 	<table>
 		<tr><th>Aktiviert:</th><td colspan="2">
-			<input type="checkbox" name="traffic_limit" <%= ${traffic_checked} %>>
+			<input type="checkbox" name="traffic_limit" <%= ${traffic_checked} %>/>
 		</td></tr>
-		<tr><th>Freifunk&nbsp;Download:</th><td><input type="text" name="limit_ingress" value="<%= $(uci -q get 'simple-tc.example.limit_ingress') %>" /></td><td>kbit/s</td></tr>
-		<tr><th>Freifunk&nbsp;Upload:</th><td><input type="text" name="limit_egress" value="<%= $(uci -q get 'simple-tc.example.limit_egress') %>" /></td><td>kbit/s</td></tr>
+		<tr><th>Freifunk&nbsp;Download:</th><td><input type="text" name="limit_ingress" value="<%= $(uci -q get 'fff.trafficcontrol.limit_in') %>" /></td><td>kbit/s</td></tr>
+		<tr><th>Freifunk&nbsp;Upload:</th><td><input type="text" name="limit_egress" value="<%= $(uci -q get 'fff.trafficcontrol.limit_out') %>" /></td><td>kbit/s</td></tr>
+	</table>
+</fieldset>
+<fieldset style="min-height: 8em;" class="smallinput">
+	<legend>Weitere Einstellungen</legend>
+	<table>
+		<tr><th>Show upgrade notification:</th><td colspan="2">
+			<input type="checkbox" name="upgrade_notification" <%= ${upgrade_checked} %>/>
+		</td></tr>
+		
+		<%
+		if uci -q get system.poe_passthrough > /dev/null ; then
+			if [ "$(uci -q get 'fff.poe_passthrough.active')" == "1" ] ; then # not set=0
+				poe_pt_checked="$chkd"
+			else
+				poe_pt_checked=""
+			fi
+		%>
+		<tr><th>Enable PoE passthrough:</th><td colspan="2">
+			<input type="checkbox" name="poe_passthrough" <%= ${poe_pt_checked} %>/>
+		</td></tr>
+		<% fi %>
+		
 	</table>
 </fieldset>
 </td></tr>
 </table>
-<input type="submit" style="margin-top: 5px; margin-left: 3px;" />
 </form>
 <%in /www/ssl/cgi-bin/footer %>

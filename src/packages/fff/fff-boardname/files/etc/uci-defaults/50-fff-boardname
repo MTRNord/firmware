@@ -16,11 +16,18 @@ case "$BOARD" in
         grep 740 /var/sysinfo/model && BOARD=tl-wr740n-v4
         ;;
     tl-wr841n-v7)
-        BOARD=tl-wr841nd-v7
+        BOARD=tl-wr841-v7
+        ;;
+    tl-wr841n-v8)
+        BOARD=tl-wr841-v8
         ;;
     tl-wr841n-v9)
-        grep "v10" /var/sysinfo/model && BOARD=tl-wr841n-v10
-        grep "v11" /var/sysinfo/model && BOARD=tl-wr841n-v11
+        BOARD=tl-wr841-v9
+        grep "v10" /var/sysinfo/model && BOARD=tl-wr841-v10
+        ;;
+    tl-wr841n-v11)
+        BOARD=tl-wr841-v11
+        grep "v12" /var/sysinfo/model && BOARD=tl-wr841-v12
         ;;
     nanostation-m)
         BOARD=ubnt-nano-m
@@ -33,6 +40,9 @@ case "$BOARD" in
         ;;
     loco-m-xw)
         BOARD=ubnt-loco-m-xw
+        ;;
+    unifiac-lite)
+        BOARD=ubnt-unifiac-lite
         ;;
     tl-wa850re)
         BOARD=tl-wa850re-v1

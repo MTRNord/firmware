@@ -13,31 +13,33 @@
 
 builddir=./build
 
-OPENWRTREV="2da512ecf4631cd7812283f0931cf6bbf842a313" # LEDE 17.01.2
-OPENWRTURL="https://git.lede-project.org/source.git"
-PACKAGEREV="f2539c5847cea6a36e3363babacd7d8f37252ec3" # lede-17.01 from 2017-06-29
-PACKAGEURL="https://github.com/openwrt/packages.git"
+OPENWRTREV="8ad1b09c6dcff814eb04084ef349f975025b7dc1" # LEDE from 2017-10-13
+OPENWRTURL="https://git.openwrt.org/openwrt/openwrt.git"
+PACKAGEREV="21b2e3eb761ea79bf3a8d2b6368435887960f5c2" # lede-17.01.3
+PACKAGEURL="https://git.openwrt.org/feed/packages.git"
 
 ## Feed definition [0]: name aka directory, [1]: url, [2]: revision, [3..n]: patches
 
 #official openwrt packages
 OPENWRT=(openwrt
          $PACKAGEURL
-         $PACKAGEREV)
+         $PACKAGEREV
+         fastd/0020-fastd_generate_key_from_urandom.patch)
 OPENWRT_PKGS="gpioctl-sysfs libugpio fastd haserl"
 
-## Be careful: FFF uses COMPAT_VERSION 14 at the moment.
+## Be careful: FFF uses COMPAT_VERSION 15 as default at the moment.
 ## See http://www.open-mesh.org/projects/batman-adv/wiki/Compatversion
 GLUON=(gluon
             https://github.com/freifunk-gluon/packages.git
-            a18c69094c534bb7359d9c95c7b88ac047712574)
+            8b65619f59c3bdce743c2f2fb2588fdd7079355a
+            "0001-simple-tc-Use-hotplug.d-iface-instead-of-hotplug.d-n.patch")
 GLUON_PKGS="kmod-batman-adv-legacy micrond simple-tc uradvd"
 
 #official openwrt routing packages
 ROUTING=(routing
-         https://github.com/openwrt-routing/packages.git
-         dd36dd47bbd75defcb3c517cafe7a19ee425f0af) # lede-17.01
-ROUTING_PKGS="alfred"
+         https://git.openwrt.org/feed/routing.git
+         d11075cd40a88602bf4ba2b275f72100ddcb4767) # lede-17.01
+ROUTING_PKGS="kmod-batman-adv batctl alfred"
 
 FFF=(fff)
 FFF_PKGS="-a"
@@ -103,7 +105,7 @@ get_source() {
             count=3
             while [ "x${FEED[count]}" != "x" ]
             do
-                local PATCH=${FEED[count]}
+                local PATCH="../../../build_patches/${NAME}/${FEED[count]}"
                 if [ ! -z "$PATCH" ] ; then
                     echo "Patching $PATCH"
                     git -C "$NAME" am --whitespace=nowarn "$PATCH"
@@ -276,19 +278,21 @@ cp_firmware() {
         local community="fff"
     fi
 
+    [ -n "$subtarget" ] || subtarget="generic"
+
     for image in ${images[@]}; do
         filename_build=${image//lede/${community}-${version}}
         filename_build=${filename_build//generic/g}
-        cp "$target/bin/targets/${chipset}/generic/$image" "./bin/$filename_build"
+        cp "$target/bin/targets/${chipset}/${subtarget}/$image" "./bin/$filename_build"
 
         for region in "" "-eu" "-us"; do
             image_factory=${image/sysupgrade/factory$region}
-            if [[ -f "$target/bin/targets/${chipset}/generic/$image_factory" ]]; then
+            if [[ -f "$target/bin/targets/${chipset}/${subtarget}/$image_factory" ]]; then
               filename_build_factory=${filename_build/sysupgrade/factory$region}
               if [ ${#image_factory} -lt ${#filename_build_factory} ]; then
-                echo "Warning: The factory image file name (${filename_build_factory}) is longer than the OpenWrt one, which might be incompatibility with the stock firmware."
+                echo "Warning: The factory image file name (${filename_build_factory}) is longer than the OpenWrt one, which might lead to incompatibility with the stock firmware."
               fi
-              cp "$target/bin/targets/${chipset}/generic/$image_factory" "./bin/$filename_build_factory"
+              cp "$target/bin/targets/${chipset}/${subtarget}/$image_factory" "./bin/$filename_build_factory"
             fi
         done
     done
@@ -372,6 +376,11 @@ buildall() {
         build "$1"
     done
 }
+
+if [ "$(/usr/bin/id -u)" -eq 0 ]; then
+	echo "don't run buildscript as root"
+	exit 1
+fi
 
 if [ "$1" != "selectbsp" -a "$1" != "selectcommunity" ]; then
     if [ ! -h selected_bsp ]; then

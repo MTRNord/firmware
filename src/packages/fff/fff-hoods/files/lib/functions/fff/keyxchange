@@ -1,0 +1,32 @@
+#!/bin/sh
+# Copyright 2017 Adrian Schmutzler
+# License GPLv3
+
+. /usr/share/libubox/jshn.sh
+
+hoodfile="/tmp/keyxchangev2data"
+hoodfilecopy="/www/hood/keyxchangev2data"
+
+getJsonPath() {
+	jsonfile=""
+	if [ -s "$hoodfilecopy" ] ; then
+		jsonfile="$hoodfilecopy"
+	elif [ -s "$hoodfile" ] ; then
+		jsonfile="$hoodfile"
+	fi
+	echo "$jsonfile"
+}
+
+getUpgradePath() {
+	jsonfile="$(getJsonPath)"
+
+	if [ -n "$jsonfile" ] ; then
+		json_load "$(cat "$jsonfile")"
+		json_select hood
+		json_get_var upath upgrade_path
+		echo "$upath"
+	else
+		return 1
+	fi
+	return 0
+}

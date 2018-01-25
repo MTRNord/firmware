@@ -14,6 +14,21 @@ wifiDelAll() {
 	return 0
 }
 
+wifiDelIface() {
+	if [ $# -ne "0" ]
+	then
+		echo "Usage: wifiDelIface"
+		return 1
+	fi
+
+	grep 'config wifi-iface' /etc/config/wireless | sed -n -e "s/.*'\([^']*\)'.*/\1/p" | while read -r line ; do
+		uci -q delete "wireless.$line"
+	done
+	uci -q commit wireless
+
+	return 0
+}
+
 wifiAddPhy() {
 	if [ $# -ne "2" ]
 	then
@@ -23,9 +38,12 @@ wifiAddPhy() {
 
 	local phy=$1
 	local channel=$2
-	local radio="radio$(echo $phy | tr -d -C [0-9])"
+	local radio="radio$(echo "$phy" | tr -d -C "0-9")"
 	local hwmode="11g"
-	if [ "$channel" -gt "14" ]; then
+	if [ "$channel" = "auto5" ] ; then
+		hwmode="11a"
+		channel="auto"
+	elif ( ! [ "$channel" = "auto" ] ) && [ "$channel" -gt "14" ]; then
 		hwmode="11a"
 	fi
 
@@ -37,11 +55,39 @@ wifiAddPhy() {
 		set wireless.${radio}.hwmode='${hwmode}'
 		set wireless.${radio}.htmode='HT20'
 		set wireless.${radio}.country='DE'
-		commit wireless
 	__EOF__
+	if [ "$hwmode" = "11g" ]; then
+		uci batch <<-__EOF__
+			set wireless.${radio}.supported_rates='6000 9000 12000 18000 24000 36000 48000 54000'
+			set wireless.${radio}.basic_rate='6000 9000 18000 36000 54000'
+		__EOF__
+	fi
+	uci commit wireless
 
 	echo "${radio}"
 	return 0
+}
+
+wifiAddPhyCond() {
+	if [ $# -ne "3" ]
+	then
+		return 1
+	fi
+
+	local phy=$1
+	local freq=$2
+	local channel=$3
+	local radio=""
+
+	if iw phy "$phy" info | grep -q -m1 "${freq}... MHz"; then
+		radio="$(wifiAddPhy "$phy" "$channel")"
+		if [ -z "$radio" ]; then
+			return 1
+		fi
+	fi
+	
+	echo "$radio"
+	return 0 # also returns success if outermost if is false
 }
 
 wifiAddAdHocMesh() {
@@ -56,9 +102,9 @@ wifiAddAdHocMesh() {
 	local bssid=$3
 
 	local channel=$(uci get "wireless.${radio}.channel")
-	local iface="w2mesh"
+	local iface="w2ibss"
 	if [ "$channel" -gt "14" ]; then
-		iface="w5mesh"
+		iface="w5ibss"
 	fi
 
 	uci batch <<-__EOF__
@@ -85,33 +131,101 @@ wifiAddAdHocMesh() {
 }
 
 wifiAddAP() {
-	if [ $# -ne "2" ]
+	if [ $# -ne "5" ]
 	then
-		echo "Usage: wifiAddAP <radio> <essid>"
+		echo "Usage: wifiAddAP <radio> <essid> <network> <iface> <hidden>"
 		return 1
 	fi
 
 	local radio=$1
 	local essid=$2
+	local network=$3
+	local inface=$4
+	local hidden=$5
 
 	local channel=$(uci get "wireless.${radio}.channel")
-	local iface="w2ap"
+	local iface="w2${inface}"
 	if [ "$channel" -gt "14" ]; then
-		iface="w5ap"
+		iface="w5${inface}"
 	fi
 	uci batch <<-__EOF__
 		set wireless.${iface}='wifi-iface'
 		set wireless.${iface}.device='${radio}'
-		set wireless.${iface}.network='mesh'
+		set wireless.${iface}.network='${network}'
 		set wireless.${iface}.ifname='${iface}'
 		set wireless.${iface}.mode='ap'
 		set wireless.${iface}.ssid='${essid}'
 		set wireless.${iface}.encryption='none'
+		set wireless.${iface}.hidden='${hidden}'
 
 		commit wireless
 	__EOF__
 
 	echo "${iface}"
+	return 0
 }
 
+wifiAddSta() {
+	if [ $# -ne "4" ]
+	then
+		echo "Usage: wifiAddSta <radio> <essid> <network> <iface>"
+		return 1
+	fi
+
+	local radio=$1
+	local essid=$2
+	local network=$3
+	local iface=$4
+
+	uci batch <<-__EOF__
+		set wireless.${iface}='wifi-iface'
+		set wireless.${iface}.device='${radio}'
+		set wireless.${iface}.network='${network}'
+		set wireless.${iface}.ifname='${iface}'
+		set wireless.${iface}.mode='sta'
+		set wireless.${iface}.ssid='${essid}'
+
+		commit wireless
+	__EOF__
+	
+	echo "${iface}"
+	return 0
+}
+
+wifiAddMesh() {
+	if [ $# -ne "2" ]
+	then
+		echo "Usage: wifiAddMesh <radio> <mesh-id>"
+		return 1
+	fi
+
+	local radio=$1
+	local mesh_id=$2
+
+	local channel=$(uci get "wireless.${radio}.channel")
+	local iface="w2mesh"
+	if [ "$channel" -gt "14" ]; then
+		iface="w5mesh"
+	fi
+	uci batch <<-__EOF__
+		set wireless.${iface}='wifi-iface'
+		set wireless.${iface}.device='${radio}'
+		set wireless.${iface}.network='${iface}'
+		set wireless.${iface}.ifname='${iface}'
+		set wireless.${iface}.mode='mesh'
+		set wireless.${iface}.mesh_id='${mesh_id}'
+		set wireless.${iface}.encryption='none'
+		set wireless.${iface}.mesh_fwding=0
+		commit wireless
+
+		set network.${iface}='interface'
+		set network.${iface}.mtu='1528'
+		set network.${iface}.proto='batadv'
+		set network.${iface}.mesh='bat0'
+		commit network
+	__EOF__
+
+	echo "${iface}"
+	return 0
+}
 # vim: set noexpandtab:tabstop=4

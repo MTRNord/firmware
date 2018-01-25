@@ -1,7 +1,21 @@
 #!/usr/bin/haserl
 
+<%
+# read from keyxchangev2data
+. /lib/functions/fff/evalhoodinfo
+
+# prepare
+if [ "$REQUEST_METHOD" == "POST" ] ; then
+	if [ "$POST_resethood" != "" ] ; then
+		# reset hood
+		rm "$hoodfilecopy" 2> /dev/null
+		MSG='<span class="green">Hood-Daten werden innerhalb von 5 Minuten neu prozessiert.</span>'
+	fi
+fi
+%>
 <%in /www/ssl/cgi-bin/header %>
 <%in /www/ssl/cgi-bin/helpers %>
+<% show_msg %>
 <%
 if pidof fastd >/dev/null ; then
 	vpn_active="aktiv"
@@ -39,7 +53,7 @@ fi
 %>
 <table style="width: 100%;">
 <tr><td>
-<fieldset style="min-height: 15.05em;">
+<fieldset style="padding-bottom:12px">
 	<legend>System</legend>
 	<table>
 		<tr><th>Name:</th><td><%= ${HOSTNAME} %></td></tr>
@@ -54,8 +68,18 @@ fi
 		<tr><th>Uhrzeit:</th><td><% date %></td></tr>
 	</table>
 </fieldset>
+<fieldset style="padding-bottom:12px">
+	<legend>Netz: Freifunk</legend>
+	<table>
+		<tr><th>Nutzer:</th><td><% cat /sys/kernel/debug/batman_adv/bat0/transtable_local 2> /dev/null | grep -c 'W' %></td></tr>
+		<tr><th>Empfangen:</th><td><% cat /sys/class/net/br-mesh/statistics/rx_bytes 2> /dev/null | human_bytes %></td></tr>
+		<tr><th>Gesendet:</th><td><% cat /sys/class/net/br-mesh/statistics/tx_bytes 2> /dev/null | human_bytes %></td></tr>
+		<tr><th>IPv4 Adressen:</th><td><% addr 4 br-mesh %></td></tr>
+		<tr><th>IPv6 Adressen:</th><td><% addr 6 br-mesh %></td></tr>
+	</table>
+</fieldset>
 </td><td>
-<fieldset style="min-height: 15.05em;">
+<fieldset style="padding-bottom:12px">
 	<legend>Software</legend>
 	<table>
 		<tr><th>Firmware Version:</th><td><%= ${FIRMWARE_VERSION} %></td></tr>
@@ -65,25 +89,26 @@ fi
 		<tr><th>Fastd Version:</th><td><% fastd --version 2> /dev/null | cut -d' ' -f 2 %></td></tr>
 	</table>
 </fieldset>
-</td></tr>
-<tr><td>
-<fieldset style="min-height: 12.65em;">
-	<legend>Netz: Freifunk</legend>
+<form method="post">
+<fieldset style="padding-bottom:12px">
+	<legend>Hood</legend>
 	<table>
-		<tr><th>Nutzer:</th><td><% cat /sys/kernel/debug/batman_adv/bat0/transtable_local 2> /dev/null | grep -c 'W' %></td></tr>
-		<tr><th>Empfangen:</th><td><% cat /sys/class/net/br-mesh/statistics/rx_bytes | human_bytes %></td></tr>
-		<tr><th>Gesendet:</th><td><% cat /sys/class/net/br-mesh/statistics/tx_bytes | human_bytes %></td></tr>
-		<tr><th>IPv4 Adressen:</th><td><% addr 4 br-mesh %></td></tr>
-		<tr><th>IPv6 Adressen:</th><td><% addr 6 br-mesh %></td></tr>
+		<tr><th style="width:200px">Hood:</th><td><% echo "$hood" %></td></tr>
+		<tr><th style="width:200px">Mesh-Type (2.4/5 GHz):</th><td><% echo "${mesh_type2} / ${mesh_type5}" %></td></tr>
+		<tr><th style="width:200px">Channel (2.4/5 GHz):</th><td>Ger&auml;t: <% echo "${real_chan2ghz} / ${real_chan5ghz}" %> | Hood:  <% echo "${chan2ghz} / ${chan5ghz}" %></td></tr>
+		<tr><th style="width:200px">SSID (Client-AP):</th><td>Ger&auml;t: <% echo "${real_essid}" %> | Hood:  <% echo "${essid}" %></td></tr>
+		<tr><td colspan="2">&nbsp;</td></tr>
+		<tr><td colspan="2">Beim Klicken werden die Hood-Daten innerhalb von 5 Minuten neu abgerufen und angewandt:</td></tr>
+		<tr><td colspan="2"><input type="submit" name="resethood" value="Reset hood data" /></td></tr>
 	</table>
 </fieldset>
-</td><td>
-<fieldset style="min-height: 12.65em;">
+</form>
+<fieldset style="padding-bottom:12px">
 	<legend>Netz: WAN</legend>
 	<table>
 		<tr><th>Internet vorhanden:</th><td><%= ${internet_active} %></td></tr>
-		<tr><th>Empfangen:</th><td><% cat /sys/class/net/${wanif}/statistics/rx_bytes | human_bytes %></td></tr>
-		<tr><th>Gesendet:</th><td><% cat /sys/class/net/${wanif}/statistics/tx_bytes | human_bytes %></td></tr>
+		<tr><th>Empfangen:</th><td><% cat /sys/class/net/${wanif}/statistics/rx_bytes 2> /dev/null | human_bytes %></td></tr>
+		<tr><th>Gesendet:</th><td><% cat /sys/class/net/${wanif}/statistics/tx_bytes 2> /dev/null | human_bytes %></td></tr>
 		<tr><th>IPv4 Adressen:</th><td><% addr 4 $wanif %></td></tr>
 		<tr><th>IPv6 Adressen:</th><td><% addr 6 $wanif %></td></tr>
 	</table>
